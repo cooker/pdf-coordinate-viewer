@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PDF 签章坐标定位</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <main class="app-shell">
+    <aside class="sidebar">
+      <header class="brand">
+        <div class="brand-mark">PDF</div>
+        <div>
+          <h1>签章坐标定位</h1>
+          <p>基于 Mozilla PDF.js 的 PDF 坐标预览工具</p>
+        </div>
+      </header>
+
+      <section class="panel">
+        <label class="file-picker">
+          <input id="fileInput" type="file" accept="application/pdf">
+          <span>选择 PDF 文件</span>
+        </label>
+        <button id="demoButton" class="secondary-button" type="button">加载示例 PDF</button>
+      </section>
+
+      <section class="panel html-panel">
+        <div class="section-title">
+          <h2>HTML 预览</h2>
+          <button id="sampleHtmlButton" class="text-button neutral" type="button">示例</button>
+        </div>
+        <textarea id="htmlInput" spellcheck="false" placeholder="粘贴协议 HTML 内容"></textarea>
+        <button id="renderHtmlButton" class="secondary-button" type="button">渲染 HTML</button>
+      </section>
+
+      <section class="panel control-grid">
+        <label>
+          <span>缩放</span>
+          <select id="zoomSelect">
+            <option value="0.75">75%</option>
+            <option value="1" selected>100%</option>
+            <option value="1.25">125%</option>
+            <option value="1.5">150%</option>
+            <option value="2">200%</option>
+          </select>
+        </label>
+        <label>
+          <span>坐标小数</span>
+          <select id="precisionSelect">
+            <option value="0" selected>整数</option>
+            <option value="1">1 位</option>
+            <option value="2">2 位</option>
+          </select>
+        </label>
+      </section>
+
+      <section class="panel readout">
+        <h2>当前位置</h2>
+        <dl>
+          <div><dt>page</dt><dd id="pageValue">-</dd></div>
+          <div><dt>x</dt><dd id="xValue">-</dd></div>
+          <div><dt>y</dt><dd id="yValue">-</dd></div>
+        </dl>
+        <button id="copyButton" class="primary-button" type="button" disabled>复制坐标</button>
+      </section>
+
+      <section class="panel">
+        <div class="section-title">
+          <h2>点击标记</h2>
+          <button id="clearButton" class="text-button" type="button" disabled>清空</button>
+        </div>
+        <ol id="marksList" class="marks-list">
+          <li class="empty">点击 PDF 页面添加坐标点</li>
+        </ol>
+      </section>
+    </aside>
+
+    <section class="workspace">
+      <div class="toolbar">
+        <div class="status" id="statusText">请选择 PDF 文件或输入 HTML</div>
+        <div class="axis-note">PDF 坐标原点：页面左下角，X 向右，Y 向上</div>
+      </div>
+      <div id="viewer" class="viewer" aria-label="PDF 预览区"></div>
+    </section>
+  </main>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
