@@ -12,6 +12,14 @@
   --shadow: 0 18px 45px rgba(22, 34, 51, 0.12);
 }
 
+@font-face {
+  font-family: "STSong PDF";
+  src: url("./STSong-Light-UniGB-UCS2-H.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -245,6 +253,10 @@ dd {
   line-height: 1.5;
 }
 
+.html-export-button {
+  margin-top: 10px;
+}
+
 .marks-list {
   list-style: none;
   margin: 0;
@@ -340,18 +352,27 @@ dd {
   overflow: hidden;
 }
 
+.html-page-body {
+  position: absolute;
+  left: 36px;
+  top: 36px;
+  width: 523px;
+  height: 770px;
+  overflow: hidden;
+}
+
 .html-content {
   position: absolute;
   left: 0;
   top: 0;
-  width: 595px;
-  min-height: 842px;
-  padding: 36px;
+  width: 523px;
+  min-height: 770px;
   color: #111827;
-  font-family: "宋体", SimSun, serif;
-  font-size: 11px;
+  font-family: "STSong PDF", "宋体", SimSun, serif;
+  font-size: 12px;
   line-height: 1.2;
   background: #fff;
+  transform: translateY(var(--html-page-offset-screen, 0));
   pointer-events: none;
 }
 
@@ -384,11 +405,18 @@ dd {
   position: fixed;
   left: -10000px;
   top: 0;
-  width: 595px;
-  height: 842px;
-  overflow: hidden;
+  width: 523px;
+  min-height: 770px;
+  overflow: visible;
   opacity: 0;
   pointer-events: none;
+}
+
+.html-measurer .html-content {
+  position: static;
+  width: 523px;
+  min-height: 770px;
+  transform: none;
 }
 
 .page-label {
@@ -403,6 +431,91 @@ dd {
   font-size: 12px;
   font-weight: 700;
   pointer-events: none;
+}
+
+@page {
+  size: 595pt 842pt;
+  margin: 0;
+}
+
+@media print {
+  html,
+  body {
+    width: 595pt;
+    min-height: 842pt;
+    margin: 0;
+    background: #fff;
+  }
+
+  .sidebar,
+  .toolbar,
+  .empty-state,
+  .page-label,
+  .crosshair,
+  .toast {
+    display: none !important;
+  }
+
+  .app-shell,
+  .workspace,
+  .viewer {
+    display: block;
+    width: 595pt;
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    overflow: visible;
+    background: #fff;
+  }
+
+  .pdf-page {
+    display: none;
+  }
+
+  .html-page {
+    width: 595pt;
+    height: 842pt;
+    margin: 0;
+    overflow: hidden;
+    border-radius: 0;
+    box-shadow: none;
+    break-after: page;
+    page-break-after: always;
+  }
+
+  .html-page-body {
+    left: 36pt;
+    top: 36pt;
+    width: 523pt;
+    height: 770pt;
+    overflow: hidden;
+  }
+
+  .html-page:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+
+  .html-content {
+    width: 523pt;
+    min-height: 770pt;
+    color: #111827;
+    font-family: "STSong PDF", "宋体", SimSun, serif;
+    font-size: 12pt;
+    line-height: 1.2;
+    transform: translateY(var(--html-page-offset-print, 0));
+  }
+
+  .html-content,
+  .html-content * {
+    line-height: 1.2;
+  }
+
+  .html-content h1 {
+    margin: 0 0 6pt;
+    font-size: 24pt;
+  }
 }
 
 .crosshair {

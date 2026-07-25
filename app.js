@@ -7,6 +7,7 @@ const els = {
   demoButton: document.querySelector("#demoButton"),
   htmlInput: document.querySelector("#htmlInput"),
   renderHtmlButton: document.querySelector("#renderHtmlButton"),
+  exportPdfButton: document.querySelector("#exportPdfButton"),
   sampleHtmlButton: document.querySelector("#sampleHtmlButton"),
   zoomSelect: document.querySelector("#zoomSelect"),
   precisionSelect: document.querySelector("#precisionSelect"),
@@ -24,12 +25,18 @@ let pdfDocument = null;
 let currentBytes = null;
 let currentName = "";
 let currentMode = "empty";
+let htmlPageCount = 0;
+let renderedHtmlSource = "";
 let activeCoordinate = null;
 let marks = [];
+let htmlRenderJobId = 0;
 
 const pageStates = new Map();
 const A4_PAGE_WIDTH = 595;
 const A4_PAGE_HEIGHT = 842;
+const A4_PAGE_MARGIN = 36;
+const A4_CONTENT_HEIGHT = A4_PAGE_HEIGHT - A4_PAGE_MARGIN * 2;
+const PRINT_DIALOG_DELAY_MS = 600;
 
 function setStatus(text) {
   els.statusText.textContent = text;
@@ -83,6 +90,16 @@ function updateMarksList() {
   });
 }
 
+function updateExportButton() {
+  els.exportPdfButton.disabled = currentMode !== "html" || htmlPageCount === 0;
+}
+
+function resetHtmlState() {
+  htmlPageCount = 0;
+  renderedHtmlSource = "";
+  updateExportButton();
+}
+
 function getPageCoordinate(event, pageShell) {
   const state = pageStates.get(pageShell);
   if (!state) return null;
@@ -131,6 +148,7 @@ async function renderPdf() {
   }
 
   currentMode = "pdf";
+  resetHtmlState();
   pageStates.clear();
   marks = [];
   updateMarksList();
@@ -203,6 +221,7 @@ async function loadPdf(bytes, name) {
   } catch (error) {
     console.error(error);
     pdfDocument = null;
+    resetHtmlState();
     els.viewer.innerHTML = '<div class="empty-state">PDF 加载失败，请确认文件格式。</div>';
     setStatus("PDF 加载失败");
   }
@@ -231,6 +250,13 @@ function renderHtmlPreview() {
   renderHtmlPreviewAsync();
 }
 
+async function waitForLayoutAssets(root) {
+  await waitForImages(root);
+  if (document.fonts?.ready) {
+    await document.fonts.ready;
+  }
+}
+
 async function measureHtmlDocument(html) {
   const measurer = document.createElement("div");
   measurer.className = "html-measurer";
@@ -239,8 +265,8 @@ async function measureHtmlDocument(html) {
   content.innerHTML = html;
   measurer.append(content);
   document.body.append(measurer);
-  await waitForImages(content);
-  const height = Math.max(content.scrollHeight, content.offsetHeight, A4_PAGE_HEIGHT);
+  await waitForLayoutAssets(content);
+  const height = Math.max(content.scrollHeight, content.offsetHeight, A4_CONTENT_HEIGHT);
 
   measurer.remove();
   return Math.ceil(height);
@@ -258,6 +284,8 @@ async function waitForImages(root) {
 }
 
 async function renderHtmlPreviewAsync() {
+  const jobId = htmlRenderJobId + 1;
+  htmlRenderJobId = jobId;
   const html = normalizeHtmlInput(els.htmlInput.value);
   if (!html) {
     showToast("请先输入 HTML");
@@ -265,66 +293,117 @@ async function renderHtmlPreviewAsync() {
   }
 
   currentMode = "html";
+  resetHtmlState();
   pdfDocument = null;
   currentBytes = null;
   currentName = "HTML 预览";
+  els.renderHtmlButton.disabled = true;
   pageStates.clear();
   marks = [];
   updateMarksList();
   setActiveCoordinate(null);
   els.viewer.innerHTML = "";
 
-  setStatus("正在分页渲染 HTML ...");
-  const pageWidth = A4_PAGE_WIDTH;
-  const pageHeight = A4_PAGE_HEIGHT;
-  const contentHeight = await measureHtmlDocument(html);
-  const pageCount = Math.max(1, Math.ceil(contentHeight / pageHeight));
+  try {
+    setStatus("正在分页渲染 HTML ...");
+    const pageWidth = A4_PAGE_WIDTH;
+    const pageHeight = A4_PAGE_HEIGHT;
+    const pageContentHeight = A4_CONTENT_HEIGHT;
+    const contentHeight = await measureHtmlDocument(html);
+    if (jobId !== htmlRenderJobId) return;
 
-  for (let pageNumber = 1; pageNumber <= pageCount; pageNumber += 1) {
-    const pageShell = document.createElement("div");
-    pageShell.className = "html-page";
-    pageShell.dataset.page = String(pageNumber);
+    const pageCount = Math.max(1, Math.ceil(contentHeight / pageContentHeight));
+    htmlPageCount = pageCount;
+    renderedHtmlSource = html;
 
-    const label = document.createElement("div");
-    label.className = "page-label";
-    label.textContent = `HTML 第 ${pageNumber} 页`;
+    for (let pageNumber = 1; pageNumber <= pageCount; pageNumber += 1) {
+      if (jobId !== htmlRenderJobId) return;
 
-    const content = document.createElement("div");
-    content.className = "html-content";
-    content.innerHTML = html;
-    content.style.minHeight = `${contentHeight}px`;
-    content.style.transform = `translateY(-${(pageNumber - 1) * pageHeight}px)`;
+      const pageShell = document.createElement("div");
+      pageShell.className = "html-page";
+      pageShell.dataset.page = String(pageNumber);
 
-    pageShell.append(content, label);
-    els.viewer.append(pageShell);
-    pageStates.set(pageShell, {
-      mode: "html",
-      pageNumber,
-      pdfWidth: pageWidth,
-      pdfHeight: pageHeight,
-      surface: pageShell,
-    });
+      const label = document.createElement("div");
+      label.className = "page-label";
+      label.textContent = `HTML 第 ${pageNumber} 页`;
 
-    pageShell.addEventListener("mousemove", (event) => {
-      const coordinate = getPageCoordinate(event, pageShell);
-      setActiveCoordinate(coordinate);
-    });
+      const pageBody = document.createElement("div");
+      pageBody.className = "html-page-body";
 
-    pageShell.addEventListener("mouseleave", () => {
-      setActiveCoordinate(null);
-    });
+      const content = document.createElement("div");
+      content.className = "html-content";
+      content.innerHTML = html;
+      content.style.minHeight = `${contentHeight}px`;
+      content.style.setProperty("--html-page-offset-screen", `-${(pageNumber - 1) * pageContentHeight}px`);
+      content.style.setProperty("--html-page-offset-print", `-${(pageNumber - 1) * pageContentHeight}pt`);
 
-    pageShell.addEventListener("click", (event) => {
-      const coordinate = getPageCoordinate(event, pageShell);
-      if (!coordinate) return;
-      marks.push({ page: coordinate.page, x: coordinate.x, y: coordinate.y });
-      addCrosshair(coordinate);
-      updateMarksList();
-    });
+      pageBody.append(content);
+      pageShell.append(pageBody, label);
+      els.viewer.append(pageShell);
+      pageStates.set(pageShell, {
+        mode: "html",
+        pageNumber,
+        pdfWidth: pageWidth,
+        pdfHeight: pageHeight,
+        surface: pageShell,
+      });
+
+      pageShell.addEventListener("mousemove", (event) => {
+        const coordinate = getPageCoordinate(event, pageShell);
+        setActiveCoordinate(coordinate);
+      });
+
+      pageShell.addEventListener("mouseleave", () => {
+        setActiveCoordinate(null);
+      });
+
+      pageShell.addEventListener("click", (event) => {
+        const coordinate = getPageCoordinate(event, pageShell);
+        if (!coordinate) return;
+        marks.push({ page: coordinate.page, x: coordinate.x, y: coordinate.y });
+        addCrosshair(coordinate);
+        updateMarksList();
+      });
+    }
+
+    setStatus(`HTML 预览，共 ${pageCount} 页，按 A4 595 x 842 坐标显示`);
+    updateExportButton();
+  } catch (error) {
+    console.error(error);
+    resetHtmlState();
+    els.viewer.innerHTML = '<div class="empty-state">HTML 渲染失败，请检查输入内容。</div>';
+    setStatus("HTML 渲染失败");
+  } finally {
+    if (jobId === htmlRenderJobId) {
+      els.renderHtmlButton.disabled = false;
+    }
+  }
+}
+
+async function exportHtmlPdf() {
+  const html = normalizeHtmlInput(els.htmlInput.value);
+  if (!html) {
+    showToast("请先输入 HTML");
+    return;
   }
 
-  setStatus(`HTML 预览，共 ${pageCount} 页，按 A4 595 x 842 坐标显示`);
+  if (currentMode !== "html" || htmlPageCount === 0 || renderedHtmlSource !== html) {
+    await renderHtmlPreviewAsync();
+  }
+
+  if (currentMode !== "html" || htmlPageCount === 0) return;
+
+  setStatus(`准备导出 HTML PDF，共 ${htmlPageCount} 页`);
+  window.setTimeout(() => {
+    window.print();
+  }, PRINT_DIALOG_DELAY_MS);
 }
+
+window.addEventListener("afterprint", () => {
+  if (currentMode === "html" && htmlPageCount > 0) {
+    setStatus(`HTML 预览，共 ${htmlPageCount} 页，按 A4 595 x 842 坐标显示`);
+  }
+});
 
 function fillSampleHtml() {
   els.htmlInput.value = `<h1 style="text-align:center;margin-bottom:32px;">借款协议</h1>
@@ -396,6 +475,12 @@ els.demoButton.addEventListener("click", () => {
 
 els.renderHtmlButton.addEventListener("click", renderHtmlPreview);
 
+els.exportPdfButton.addEventListener("click", exportHtmlPdf);
+
+els.htmlInput.addEventListener("input", () => {
+  resetHtmlState();
+});
+
 els.sampleHtmlButton.addEventListener("click", () => {
   fillSampleHtml();
   renderHtmlPreview();
@@ -424,3 +509,4 @@ els.clearButton.addEventListener("click", () => {
 });
 
 renderPdf();
+updateExportButton();
