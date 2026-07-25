@@ -28,6 +28,8 @@ let activeCoordinate = null;
 let marks = [];
 
 const pageStates = new Map();
+const A4_PAGE_WIDTH = 595;
+const A4_PAGE_HEIGHT = 842;
 
 function setStatus(text) {
   els.statusText.textContent = text;
@@ -210,26 +212,19 @@ function normalizeHtmlInput(value) {
   const content = value.trim();
   if (!content) return "";
   if (/<!doctype|<html[\s>]/i.test(content)) {
-    return content;
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(content, "text/html");
+    const styleText = Array.from(doc.head.querySelectorAll("style"))
+      .map((style) => {
+        const mappedCss = style.textContent
+          .replace(/(^|[,{]\s*)html(?=[\s.#:{,>])/gi, "$1.html-content")
+          .replace(/(^|[,{]\s*)body(?=[\s.#:{,>])/gi, "$1.html-content");
+        return `<style>${mappedCss}</style>`;
+      })
+      .join("\n");
+    return `${styleText}\n${doc.body.innerHTML}`;
   }
-  return `<!doctype html>
-<html lang="zh-CN">
-<head>
-  <meta charset="utf-8">
-  <style>
-    body {
-      margin: 42px;
-      color: #111827;
-      font-family: Arial, "Microsoft YaHei", sans-serif;
-      font-size: 14px;
-      line-height: 1.75;
-    }
-    table { width: 100%; border-collapse: collapse; }
-    td, th { border: 1px solid #d1d5db; padding: 6px 8px; }
-  </style>
-</head>
-<body>${content}</body>
-</html>`;
+  return content;
 }
 
 function renderHtmlPreview() {
@@ -239,31 +234,27 @@ function renderHtmlPreview() {
 async function measureHtmlDocument(html) {
   const measurer = document.createElement("div");
   measurer.className = "html-measurer";
-
-  const iframe = document.createElement("iframe");
-  iframe.setAttribute("sandbox", "allow-same-origin");
-  iframe.srcdoc = html;
-  measurer.append(iframe);
+  const content = document.createElement("div");
+  content.className = "html-content";
+  content.innerHTML = html;
+  measurer.append(content);
   document.body.append(measurer);
-
-  await new Promise((resolve) => {
-    iframe.addEventListener("load", resolve, { once: true });
-  });
-
-  const doc = iframe.contentDocument;
-  const body = doc.body;
-  const root = doc.documentElement;
-  const height = Math.max(
-    body.scrollHeight,
-    body.offsetHeight,
-    root.clientHeight,
-    root.scrollHeight,
-    root.offsetHeight,
-    842,
-  );
+  await waitForImages(content);
+  const height = Math.max(content.scrollHeight, content.offsetHeight, A4_PAGE_HEIGHT);
 
   measurer.remove();
   return Math.ceil(height);
+}
+
+async function waitForImages(root) {
+  const images = Array.from(root.querySelectorAll("img"));
+  await Promise.all(images.map((image) => {
+    if (image.complete) return Promise.resolve();
+    return new Promise((resolve) => {
+      image.addEventListener("load", resolve, { once: true });
+      image.addEventListener("error", resolve, { once: true });
+    });
+  }));
 }
 
 async function renderHtmlPreviewAsync() {
@@ -284,8 +275,8 @@ async function renderHtmlPreviewAsync() {
   els.viewer.innerHTML = "";
 
   setStatus("正在分页渲染 HTML ...");
-  const pageWidth = 595;
-  const pageHeight = 842;
+  const pageWidth = A4_PAGE_WIDTH;
+  const pageHeight = A4_PAGE_HEIGHT;
   const contentHeight = await measureHtmlDocument(html);
   const pageCount = Math.max(1, Math.ceil(contentHeight / pageHeight));
 
@@ -298,15 +289,13 @@ async function renderHtmlPreviewAsync() {
     label.className = "page-label";
     label.textContent = `HTML 第 ${pageNumber} 页`;
 
-    const iframe = document.createElement("iframe");
-    iframe.className = "html-frame";
-    iframe.setAttribute("sandbox", "allow-same-origin");
-    iframe.srcdoc = html;
-    iframe.style.width = `${pageWidth}px`;
-    iframe.style.height = `${contentHeight}px`;
-    iframe.style.transform = `translateY(-${(pageNumber - 1) * pageHeight}px)`;
+    const content = document.createElement("div");
+    content.className = "html-content";
+    content.innerHTML = html;
+    content.style.minHeight = `${contentHeight}px`;
+    content.style.transform = `translateY(-${(pageNumber - 1) * pageHeight}px)`;
 
-    pageShell.append(iframe, label);
+    pageShell.append(content, label);
     els.viewer.append(pageShell);
     pageStates.set(pageShell, {
       mode: "html",

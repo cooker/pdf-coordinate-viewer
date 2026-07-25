@@ -340,18 +340,30 @@ dd {
   overflow: hidden;
 }
 
-.html-page iframe {
-  display: block;
-  width: 100%;
-  border: 0;
+.html-content {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 595px;
+  min-height: 842px;
+  padding: 36px;
+  color: #111827;
+  font-family: "宋体", SimSun, serif;
+  font-size: 14px;
+  line-height: 1.75;
   background: #fff;
   pointer-events: none;
 }
 
-.html-page iframe.html-frame {
-  position: absolute;
-  left: 0;
-  top: 0;
+.html-content table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.html-content td,
+.html-content th {
+  border: 1px solid #d1d5db;
+  padding: 6px 8px;
 }
 
 .html-measurer {
