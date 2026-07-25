@@ -10,6 +10,11 @@
   --accent-dark: #0f55bb;
   --danger: #b42318;
   --shadow: 0 18px 45px rgba(22, 34, 51, 0.12);
+  --pdf-page-width: 595px;
+  --pdf-page-height: 842px;
+  --pdf-page-margin: 36px;
+  --pdf-content-width: 523px;
+  --pdf-content-height: 770px;
 }
 
 @font-face {
@@ -347,32 +352,49 @@ dd {
 }
 
 .html-page {
-  width: 595px;
-  height: 842px;
-  overflow: hidden;
+  width: var(--pdf-page-width) !important;
+  height: var(--pdf-page-height) !important;
+  padding: 0 !important;
+  overflow: hidden !important;
 }
 
 .html-page-body {
-  position: absolute;
-  left: 36px;
-  top: 36px;
-  width: 523px;
-  height: 770px;
-  overflow: hidden;
+  position: absolute !important;
+  left: var(--pdf-page-margin) !important;
+  top: var(--pdf-page-margin) !important;
+  width: var(--pdf-content-width) !important;
+  height: var(--pdf-content-height) !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+
+.html-page-clip {
+  position: absolute !important;
+  left: 0 !important;
+  top: 0 !important;
+  width: var(--pdf-content-width) !important;
+  height: var(--html-page-clip-height-screen, var(--pdf-content-height)) !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  background: #fff !important;
 }
 
 .html-content {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 523px;
-  min-height: 770px;
+  position: absolute !important;
+  left: 0 !important;
+  top: 0 !important;
+  width: var(--pdf-content-width) !important;
+  min-height: var(--pdf-content-height);
+  margin: 0 !important;
+  padding: 0 !important;
   color: #111827;
   font-family: "STSong PDF", "宋体", SimSun, serif;
   font-size: 12px;
   line-height: 1.2;
   background: #fff;
-  transform: translateY(var(--html-page-offset-screen, 0));
+  transform: translateY(var(--html-page-offset-screen, 0)) !important;
   pointer-events: none;
 }
 
@@ -405,18 +427,18 @@ dd {
   position: fixed;
   left: -10000px;
   top: 0;
-  width: 523px;
-  min-height: 770px;
+  width: var(--pdf-content-width);
+  min-height: var(--pdf-content-height);
   overflow: visible;
   opacity: 0;
   pointer-events: none;
 }
 
 .html-measurer .html-content {
-  position: static;
-  width: 523px;
-  min-height: 770px;
-  transform: none;
+  position: static !important;
+  width: var(--pdf-content-width) !important;
+  min-height: var(--pdf-content-height);
+  transform: none !important;
 }
 
 .page-label {
@@ -441,10 +463,10 @@ dd {
 @media print {
   html,
   body {
-    width: 595pt;
-    min-height: 842pt;
-    margin: 0;
-    background: #fff;
+    width: 595pt !important;
+    min-height: 842pt !important;
+    margin: 0 !important;
+    background: #fff !important;
   }
 
   .sidebar,
@@ -459,52 +481,74 @@ dd {
   .app-shell,
   .workspace,
   .viewer {
-    display: block;
-    width: 595pt;
-    min-width: 0;
-    min-height: 0;
-    margin: 0;
-    padding: 0;
-    overflow: visible;
-    background: #fff;
+    display: block !important;
+    width: 595pt !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    background: #fff !important;
   }
 
   .pdf-page {
-    display: none;
+    display: none !important;
   }
 
-  .html-page {
-    width: 595pt;
-    height: 842pt;
-    margin: 0;
-    overflow: hidden;
-    border-radius: 0;
-    box-shadow: none;
-    break-after: page;
-    page-break-after: always;
+  body .html-page {
+    position: relative !important;
+    width: 595pt !important;
+    height: 842pt !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    break-after: page !important;
+    page-break-after: always !important;
   }
 
-  .html-page-body {
-    left: 36pt;
-    top: 36pt;
-    width: 523pt;
-    height: 770pt;
-    overflow: hidden;
+  body .html-page > .html-page-body {
+    position: absolute !important;
+    left: 36pt !important;
+    top: 36pt !important;
+    width: 523pt !important;
+    height: 770pt !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
   }
 
-  .html-page:last-child {
-    break-after: auto;
-    page-break-after: auto;
+  body .html-page > .html-page-body > .html-page-clip {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 523pt !important;
+    height: var(--html-page-clip-height-print, 770pt) !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    background: #fff !important;
   }
 
-  .html-content {
-    width: 523pt;
-    min-height: 770pt;
-    color: #111827;
-    font-family: "STSong PDF", "宋体", SimSun, serif;
-    font-size: 12pt;
-    line-height: 1.2;
-    transform: translateY(var(--html-page-offset-print, 0));
+  body .html-page:last-child {
+    break-after: auto !important;
+    page-break-after: auto !important;
+  }
+
+  body .html-page > .html-page-body > .html-page-clip > .html-content {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 523pt !important;
+    min-height: 770pt !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    color: #111827 !important;
+    font-family: "STSong PDF", "宋体", SimSun, serif !important;
+    font-size: 12pt !important;
+    line-height: 1.2 !important;
+    transform: translateY(var(--html-page-offset-print, 0)) !important;
   }
 
   .html-content,

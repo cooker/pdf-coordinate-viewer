@@ -36,6 +36,9 @@ const A4_PAGE_WIDTH = 595;
 const A4_PAGE_HEIGHT = 842;
 const A4_PAGE_MARGIN = 36;
 const A4_CONTENT_HEIGHT = A4_PAGE_HEIGHT - A4_PAGE_MARGIN * 2;
+const PAGE_BREAK_EPSILON = 0.1;
+const PAGE_BREAK_LINE_BOX_ADJUSTMENT = 1;
+const MIN_PAGE_VISIBLE_HEIGHT = 120;
 const PRINT_DIALOG_DELAY_MS = 600;
 
 function setStatus(text) {
@@ -227,23 +230,90 @@ async function loadPdf(bytes, name) {
   }
 }
 
+function stripGlobalPrintCss(css) {
+  let output = "";
+  let cursor = 0;
+  const globalRulePattern = /@(page|media\s+print)\b/gi;
+  let match = globalRulePattern.exec(css);
+
+  while (match) {
+    output += css.slice(cursor, match.index);
+    const blockStart = css.indexOf("{", match.index);
+    if (blockStart === -1) {
+      cursor = css.length;
+      break;
+    }
+
+    let depth = 0;
+    let blockEnd = blockStart;
+    for (; blockEnd < css.length; blockEnd += 1) {
+      if (css[blockEnd] === "{") depth += 1;
+      if (css[blockEnd] === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          blockEnd += 1;
+          break;
+        }
+      }
+    }
+
+    cursor = blockEnd;
+    globalRulePattern.lastIndex = cursor;
+    match = globalRulePattern.exec(css);
+  }
+
+  return output + css.slice(cursor);
+}
+
+function scopeCssSelector(selector) {
+  const trimmed = selector.trim();
+  if (!trimmed) return "";
+  if (trimmed.startsWith(".html-content")) return `.html-content ${trimmed}`;
+  if (/^html$/i.test(trimmed) || /^body$/i.test(trimmed)) return ".html-content > *";
+
+  const mapped = trimmed
+    .replace(/^html(?=[\s.#:[>+~]|$)/i, ".html-content")
+    .replace(/^body(?=[\s.#:[>+~]|$)/i, ".html-content");
+
+  if (mapped.startsWith(".html-content")) return mapped;
+  return `.html-content ${mapped}`;
+}
+
+function scopeStyleText(css) {
+  return stripGlobalPrintCss(css).replace(/(^|})\s*([^@{}][^{}]*)\{/g, (match, boundary, selectorText) => {
+    const selectors = selectorText
+      .split(",")
+      .map(scopeCssSelector)
+      .filter(Boolean);
+    if (selectors.length === 0) return match;
+    return `${boundary} ${selectors.join(", ")} {`;
+  });
+}
+
+function scopeStyleElements(root) {
+  root.querySelectorAll("style").forEach((style) => {
+    style.textContent = scopeStyleText(style.textContent);
+  });
+}
+
 function normalizeHtmlInput(value) {
   const content = value.trim();
   if (!content) return "";
   if (/<!doctype|<html[\s>]/i.test(content)) {
     const parser = new DOMParser();
     const doc = parser.parseFromString(content, "text/html");
+    scopeStyleElements(doc.head);
+    scopeStyleElements(doc.body);
     const styleText = Array.from(doc.head.querySelectorAll("style"))
-      .map((style) => {
-        const mappedCss = style.textContent
-          .replace(/(^|[,{]\s*)html(?=[\s.#:{,>])/gi, "$1.html-content")
-          .replace(/(^|[,{]\s*)body(?=[\s.#:{,>])/gi, "$1.html-content");
-        return `<style>${mappedCss}</style>`;
-      })
+      .map((style) => style.outerHTML)
       .join("\n");
     return `${styleText}\n${doc.body.innerHTML}`;
   }
-  return content;
+
+  const template = document.createElement("template");
+  template.innerHTML = content;
+  scopeStyleElements(template.content);
+  return template.innerHTML;
 }
 
 function renderHtmlPreview() {
@@ -267,9 +337,84 @@ async function measureHtmlDocument(html) {
   document.body.append(measurer);
   await waitForLayoutAssets(content);
   const height = Math.max(content.scrollHeight, content.offsetHeight, A4_CONTENT_HEIGHT);
+  const lineBands = collectTextLineBands(content);
 
   measurer.remove();
-  return Math.ceil(height);
+  return {
+    height: Math.ceil(height),
+    lineBands,
+  };
+}
+
+function collectTextLineBands(content) {
+  const contentRect = content.getBoundingClientRect();
+  const bands = [];
+  const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT);
+
+  while (walker.nextNode()) {
+    const node = walker.currentNode;
+    if (!node.textContent.trim()) continue;
+
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    Array.from(range.getClientRects()).forEach((rect) => {
+      if (rect.width <= 0 || rect.height <= 0) return;
+      bands.push({
+        top: rect.top - contentRect.top,
+        bottom: rect.bottom - contentRect.top,
+      });
+    });
+  }
+
+  return bands
+    .sort((a, b) => a.top - b.top || a.bottom - b.bottom);
+}
+
+function findSafePageBreak(targetOffset, pageStartOffset, lineBands) {
+  const crossingIndex = lineBands.findIndex((band) => (
+    band.top < targetOffset - PAGE_BREAK_EPSILON
+    && band.bottom > targetOffset + PAGE_BREAK_EPSILON
+  ));
+  if (crossingIndex === -1) return targetOffset;
+
+  const crossingBand = lineBands[crossingIndex];
+  const previousBand = lineBands
+    .slice(0, crossingIndex)
+    .reverse()
+    .find((band) => band.top < crossingBand.top - PAGE_BREAK_EPSILON);
+
+  const safeOffset = Math.max(
+    pageStartOffset,
+    crossingBand.top + PAGE_BREAK_LINE_BOX_ADJUSTMENT,
+    previousBand?.bottom || pageStartOffset,
+  );
+  if (safeOffset - pageStartOffset < MIN_PAGE_VISIBLE_HEIGHT) {
+    return targetOffset;
+  }
+
+  return safeOffset;
+}
+
+function createHtmlPagePlan(contentHeight, lineBands) {
+  const pages = [];
+  let pageStartOffset = 0;
+
+  while (pageStartOffset + A4_CONTENT_HEIGHT < contentHeight - PAGE_BREAK_EPSILON) {
+    const targetOffset = pageStartOffset + A4_CONTENT_HEIGHT;
+    const pageEndOffset = findSafePageBreak(targetOffset, pageStartOffset, lineBands);
+    pages.push({
+      offset: pageStartOffset,
+      visibleHeight: Math.max(0, pageEndOffset - pageStartOffset),
+    });
+    pageStartOffset = pageEndOffset;
+  }
+
+  pages.push({
+    offset: pageStartOffset,
+    visibleHeight: Math.min(A4_CONTENT_HEIGHT, Math.max(0, contentHeight - pageStartOffset)),
+  });
+
+  return pages;
 }
 
 async function waitForImages(root) {
@@ -309,15 +454,18 @@ async function renderHtmlPreviewAsync() {
     const pageWidth = A4_PAGE_WIDTH;
     const pageHeight = A4_PAGE_HEIGHT;
     const pageContentHeight = A4_CONTENT_HEIGHT;
-    const contentHeight = await measureHtmlDocument(html);
+    const measurement = await measureHtmlDocument(html);
     if (jobId !== htmlRenderJobId) return;
 
-    const pageCount = Math.max(1, Math.ceil(contentHeight / pageContentHeight));
+    const contentHeight = measurement.height;
+    const pagePlan = createHtmlPagePlan(contentHeight, measurement.lineBands);
+    const pageCount = pagePlan.length;
     htmlPageCount = pageCount;
     renderedHtmlSource = html;
 
     for (let pageNumber = 1; pageNumber <= pageCount; pageNumber += 1) {
       if (jobId !== htmlRenderJobId) return;
+      const page = pagePlan[pageNumber - 1];
 
       const pageShell = document.createElement("div");
       pageShell.className = "html-page";
@@ -334,10 +482,16 @@ async function renderHtmlPreviewAsync() {
       content.className = "html-content";
       content.innerHTML = html;
       content.style.minHeight = `${contentHeight}px`;
-      content.style.setProperty("--html-page-offset-screen", `-${(pageNumber - 1) * pageContentHeight}px`);
-      content.style.setProperty("--html-page-offset-print", `-${(pageNumber - 1) * pageContentHeight}pt`);
+      content.style.setProperty("--html-page-offset-screen", `-${page.offset}px`);
+      content.style.setProperty("--html-page-offset-print", `-${page.offset}pt`);
 
-      pageBody.append(content);
+      const pageClip = document.createElement("div");
+      pageClip.className = "html-page-clip";
+      pageClip.style.setProperty("--html-page-clip-height-screen", `${page.visibleHeight}px`);
+      pageClip.style.setProperty("--html-page-clip-height-print", `${page.visibleHeight}pt`);
+
+      pageClip.append(content);
+      pageBody.append(pageClip);
       pageShell.append(pageBody, label);
       els.viewer.append(pageShell);
       pageStates.set(pageShell, {
