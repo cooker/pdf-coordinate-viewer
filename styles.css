@@ -349,10 +349,24 @@ dd {
   padding: 36px;
   color: #111827;
   font-family: "宋体", SimSun, serif;
-  font-size: 14px;
-  line-height: 1.75;
+  font-size: 11px;
+  line-height: 1.2;
   background: #fff;
   pointer-events: none;
+}
+
+.html-content p {
+  margin: 0;
+}
+
+.html-content,
+.html-content * {
+  line-height: 1.2;
+}
+
+.html-content h1 {
+  margin: 0 0 6px;
+  font-size: 24px;
 }
 
 .html-content table {
